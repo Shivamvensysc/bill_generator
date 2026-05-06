@@ -6,7 +6,6 @@ import {
   FileText,
   PlusCircle,
   LogOut,
-  Home,
   Settings
 } from 'lucide-react';
 
@@ -16,10 +15,8 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
   const menuItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: Home, end: true },
+    { path: '/vendors', label: 'All Vendors', icon: Users, end: true },
     { path: '/vendors/create', label: 'Create Vendor', icon: PlusCircle, end: true },
-    { path: '/vendors', label: 'All Vendors', icon: Users, end: true }, // 🔥 IMPORTANT
-    { path: '/bill', label: 'Generate Bill', icon: FileText, end: true },
     { path: '/settings', label: 'Settings', icon: Settings, end: true },
   ];
 

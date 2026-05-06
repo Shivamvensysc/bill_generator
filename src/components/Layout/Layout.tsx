@@ -30,7 +30,7 @@ const AppContent: React.FC = () => {
   const handleLogin = (email: string, password: string) => {
     if (email === 'admin@company.com' && password === 'admin123') {
       setIsAuthenticated(true);
-      navigate('/dashboard');
+      navigate('/vendors');
     } else {
       alert('Invalid credentials');
     }
@@ -46,7 +46,8 @@ const AppContent: React.FC = () => {
   const getTitle = () => {
     const path = location.pathname;
 
-    if (path === '/dashboard') return 'Dashboard';
+   
+    
     if (path === '/vendors/create') return 'Create Vendor';
     if (path === '/vendors/edit') return 'Edit Vendor';
     if (path === '/vendors') return 'All Vendors';
@@ -70,7 +71,7 @@ const AppContent: React.FC = () => {
 
         <main className="p-8">
           <Routes>
-            <Route path="/dashboard" element={<Dashboard />} />
+            {/* <Route path="/dashboard" element={<Dashboard />} /> */}
 
             <Route
               path="/vendors"

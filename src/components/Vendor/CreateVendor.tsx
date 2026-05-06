@@ -10,15 +10,18 @@ import {
   IdCard,
   Hash,
   Globe,
-  Briefcase,
   Wallet,
   RefreshCw,
   Users,
-  ArrowLeft
+  ArrowLeft,
+  Upload,
+  Image
 } from 'lucide-react';   
 import { VendorValidator } from '../../utils/validation';
 import type { Vendor } from '../../types'; 
 import axios from 'axios';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 interface CreateVendorProps {
   editingVendor?: Vendor | null;
@@ -87,6 +90,70 @@ const TextAreaField = React.memo(({ label, name, value, onChange, placeholder, i
   </div>
 ));
 
+const FileUploadField = React.memo(({ 
+  label, 
+  name, 
+  onFileChange, 
+  accept, 
+  icon: Icon, 
+  required = false,
+  error,
+  maxSize,
+  maxSizeText
+}: any) => {
+  const [fileName, setFileName] = useState('');
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size
+      if (file.size > maxSize) {
+        const errorMessage = `File size should be less than ${maxSizeText}`;
+        onFileChange({ target: { name, value: null } }, errorMessage);
+        setFileName('');
+        e.target.value = '';
+        return;
+      }
+      setFileName(file.name);
+      onFileChange({ target: { name, file } }, '');
+    } else {
+      setFileName('');
+      onFileChange({ target: { name, value: null } }, '');
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 mb-2">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        {Icon && (
+          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10">
+            <Icon className="w-5 h-5" />
+          </div>
+        )}
+        <input
+          type="file"
+          name={name}
+          onChange={handleFileChange}
+          accept={accept}
+          className={`w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none focus:border-primary-500 transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 ${
+            error ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-gray-300'
+          }`}
+        />
+      </div>
+      {fileName && (
+        <p className="text-green-600 text-xs mt-1 flex items-center gap-1">
+          ✓ Selected: {fileName}
+        </p>
+      )}
+      {error && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠️</span> {error}</p>}
+      <p className="text-gray-400 text-xs mt-1">Maximum file size: {maxSizeText}</p>
+    </div>
+  );
+});
+
 const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSaved, onCancel }) => {
   const [formData, setFormData] = useState({
     vendorName: '',
@@ -102,6 +169,14 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
       accountNumber: '',
       ifscCode: '',
     }
+  });
+
+  const [files, setFiles] = useState<{
+    logo: File | null;
+    msmeCertificate: File | null;
+  }>({
+    logo: null,
+    msmeCertificate: null
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -143,6 +218,10 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
           ifscCode: '',
         }
       });
+      setFiles({
+        logo: null,
+        msmeCertificate: null
+      });
     }
   }, [editingVendor]);
 
@@ -167,6 +246,25 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
         };
       }
     });
+
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  }, [errors]);
+
+  const handleFileChange = useCallback((event: any, errorMessage?: string) => {
+    const { name, file } = event.target;
+    
+    if (errorMessage) {
+      setErrors(prev => ({ ...prev, [name]: errorMessage }));
+      toast.error(errorMessage);
+      return;
+    }
+
+    setFiles(prev => ({
+      ...prev,
+      [name]: file
+    }));
 
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -201,6 +299,7 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
 
     const newErrors: Record<string, string> = {};
 
+    // Validate text fields
     Object.entries(formData).forEach(([key, value]) => {
       if (key !== 'bankDetails' && key !== 'address' && key !== 'stateCode' && key !== 'msmeCertificateNo') {
         const error = validateField(key, value as string);
@@ -208,12 +307,31 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
       }
     });
 
+    // Validate bank details
     Object.entries(formData.bankDetails).forEach(([key, value]) => {
       if (value) {
         const error = validateField(key, value);
         if (error) newErrors[key] = error;
       }
     });
+
+    // Check if at least one file is provided for new vendor
+    if (!isEditMode && !files.logo) {
+      newErrors.logo = 'Vendor logo is required';
+      toast.error('Vendor logo is required');
+    }
+
+    // Validate logo file if provided (max 2MB)
+    if (files.logo && files.logo.size > 2 * 1024 * 1024) {
+      newErrors.logo = 'Logo file size should be less than 2MB';
+      toast.error('Logo file size should be less than 2MB');
+    }
+
+    // Validate MSME certificate if provided (max 4MB)
+    if (files.msmeCertificate && files.msmeCertificate.size > 4 * 1024 * 1024) {
+      newErrors.msmeCertificate = 'MSME Certificate file size should be less than 4MB';
+      toast.error('MSME Certificate file size should be less than 4MB');
+    }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -222,49 +340,91 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
     }
 
     try {
-      const payload = {
-        name: formData.vendorName,
-        address: formData.address,
-        state: formData.stateCode,
-        gst_number: formData.gstNumber,
-        pan_number: formData.pan,
-        aadhaar_number: formData.aadhaarNumber,
-        phone: formData.phone,
-        email: formData.email,
-        account_number: formData.bankDetails.accountNumber,
-        ifsc_code: formData.bankDetails.ifscCode,
-        msme_certificate_path: formData.msmeCertificateNo
-      };
+      // Create FormData for multipart/form-data
+      const formDataToSend = new FormData();
+      
+      // Add all text fields
+      formDataToSend.append('gst_number', formData.gstNumber || '');
+      formDataToSend.append('pan_number', formData.pan || '');
+      formDataToSend.append('name', formData.vendorName);
+      formDataToSend.append('phone', formData.phone);
+      formDataToSend.append('state', formData.stateCode || '');
+      formDataToSend.append('address', formData.address || '');
+      formDataToSend.append('aadhaar_number', formData.aadhaarNumber || '');
+      formDataToSend.append('account_number', formData.bankDetails.accountNumber || '');
+      formDataToSend.append('email', formData.email || '');
+      formDataToSend.append('ifsc_code', formData.bankDetails.ifscCode || '');
+      
+      // Add MSME certificate number if provided
+      if (formData.msmeCertificateNo) {
+        formDataToSend.append('msme_certificate_no', formData.msmeCertificateNo);
+      }
+      
+      // Add logo file if provided
+      if (files.logo) {
+        formDataToSend.append('file', files.logo);
+      }
+      
+      // Add MSME certificate file if provided
+      if (files.msmeCertificate) {
+        formDataToSend.append('msme_file', files.msmeCertificate);
+      }
 
       if (isEditMode && editingVendor) {
         // Update existing vendor
         const response = await axios.put(
           `http://192.168.11.103:5000/vendors/${editingVendor.id}`,
-          payload,
-          { headers: { 'Content-Type': 'application/json' } }
+          formDataToSend,
+          { 
+            headers: { 
+              'Content-Type': 'multipart/form-data'
+            } 
+          }
         );
         
-        // Check if response matches expected format {updated: true}
         if (response.data && response.data.updated === true) {
-          alert('✅ Vendor updated successfully!');
+          toast.success(' Vendor updated successfully!', {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
         } else {
-          alert('⚠️ Vendor updated but unexpected response format.');
+          toast.warning(' Vendor updated but unexpected response format.', {
+            position: "top-right",
+            autoClose: 4000,
+          });
         }
       } else {
         // Create new vendor
         const response = await axios.post(
           'http://192.168.11.103:5000/vendors',
-          payload,
-          { headers: { 'Content-Type': 'application/json' } }
+          formDataToSend,
+          { 
+            headers: { 
+              'Content-Type': 'multipart/form-data'
+            } 
+          }
         );
         
         if (response.data && response.data.id) {
-          alert('✅ Vendor created successfully!');
+          toast.success(' Vendor created successfully!', {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
         } else {
-          alert('⚠️ Vendor created but unexpected response format.');
+          toast.warning(' Vendor created but unexpected response format.', {
+            position: "top-right",
+            autoClose: 4000,
+          });
         }
       }
-
       // Reset form
       setFormData({
         vendorName: '',
@@ -281,6 +441,10 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
           ifscCode: '',
         }
       });
+      setFiles({
+        logo: null,
+        msmeCertificate: null
+      });
       setErrors({});
 
       if (onVendorSaved) {
@@ -290,38 +454,82 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
     } catch (error: any) {
       console.error('API Error:', error);
       if (error.response?.data?.message) {
-        alert(`❌ Failed to ${isEditMode ? 'update' : 'create'} vendor: ${error.response.data.message}`);
+        toast.error(` Failed to ${isEditMode ? 'update' : 'create'} vendor: ${error.response.data.message}`, {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+      } else if (error.response?.data?.error) {
+        toast.error(` Failed to ${isEditMode ? 'update' : 'create'} vendor: ${error.response.data.error}`, {
+          position: "top-right",
+          autoClose: 5000,
+        });
       } else {
-        alert(`❌ Failed to ${isEditMode ? 'update' : 'create'} vendor. Please try again.`);
+        toast.error(` Failed to ${isEditMode ? 'update' : 'create'} vendor. Please try again.`, {
+          position: "top-right",
+          autoClose: 5000,
+        });
       }
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, validateField, isEditMode, editingVendor, onVendorSaved]);
+  }, [formData, files, validateField, isEditMode, editingVendor, onVendorSaved]);
 
   const handleReset = useCallback(() => {
-    if (window.confirm('Are you sure you want to reset all fields?')) {
-      setFormData({
-        vendorName: '',
-        phone: '',
-        email: '',
-        address: '',
-        pan: '',
-        gstNumber: '',
-        stateCode: '',
-        aadhaarNumber: '',
-        msmeCertificateNo: '',
-        bankDetails: {
-          accountNumber: '',
-          ifscCode: ''
+    toast.info(
+      <div>
+        <p className="font-semibold">Reset Form?</p>
+        <p className="text-sm mt-1">Are you sure you want to reset all fields?</p>
+      </div>,
+      {
+        position: "top-center",
+        autoClose: false,
+        closeOnClick: false,
+        draggable: false,
+        onClick: () => {
+          setFormData({
+            vendorName: '',
+            phone: '',
+            email: '',
+            address: '',
+            pan: '',
+            gstNumber: '',
+            stateCode: '',
+            aadhaarNumber: '',
+            msmeCertificateNo: '',
+            bankDetails: {
+              accountNumber: '',
+              ifscCode: ''
+            }
+          });
+          setFiles({
+            logo: null,
+            msmeCertificate: null
+          });
+          setErrors({});
+          toast.success('Form has been reset successfully!');
         }
-      });
-      setErrors({});
-    }
+      }
+    );
   }, []);
 
   return (
     <div className="max-w-7xl mx-auto">
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
       <div className="relative overflow-hidden">
         <div className="absolute top-0 right-0 -mt-20 -mr-20 w-72 h-72 bg-primary-100 rounded-full opacity-20 blur-3xl"></div>
         <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-72 h-72 bg-blue-100 rounded-full opacity-20 blur-3xl"></div>
@@ -457,14 +665,45 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
                   icon={IdCard}
                   error={errors.aadhaarNumber}
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Documents Section */}
+          <div className="bg-white border border-slate-300 rounded-2xl shadow-lg mb-6 overflow-hidden">
+            <div className="bg-gradient-to-r from-gray-50 to-white px-6 py-2 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <div className="p-2 bg-primary-100 rounded-lg">
+                  <Upload className="w-5 h-5 text-primary-600" />
+                </div>
+                Documents & Certificates
+              </h3>
+              <p className="text-sm text-gray-500">Upload required documents (Logo max 2MB, MSME Certificate max 4MB)</p>
+            </div>
+            
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FileUploadField
+                  label="Vendor Logo *"
+                  name="logo"
+                  onFileChange={handleFileChange}
+                  accept="image/*"
+                  icon={Image}
+                  error={errors.logo}
+                  maxSize={2 * 1024 * 1024}
+                  maxSizeText="2MB"
+                  required={!isEditMode}
+                />
                 
-                <InputField
-                  label="MSME Certificate No"
-                  name="msmeCertificateNo"
-                  value={formData.msmeCertificateNo}
-                  onChange={handleChange}
-                  placeholder="MSME registration number"
-                  icon={Briefcase}
+                <FileUploadField
+                  label="MSME Certificate (PDF)"
+                  name="msmeCertificate"
+                  onFileChange={handleFileChange}
+                  accept=".pdf,application/pdf"
+                  icon={FileText}
+                  error={errors.msmeCertificate}
+                  maxSize={4 * 1024 * 1024}
+                  maxSizeText="4MB"
                 />
               </div>
             </div>
@@ -546,5 +785,3 @@ const CreateVendor: React.FC<CreateVendorProps> = ({ editingVendor, onVendorSave
 };
 
 export default CreateVendor;
-
-

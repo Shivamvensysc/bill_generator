@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Search, Eye, Building, Mail, ChevronLeft, ChevronRight, Download, Users, Edit2, Trash2 } from 'lucide-react';
 import type { Vendor } from '../../types';
 import axios from "axios";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 interface VendorListProps {
   onVendorClick: (vendorId: string) => void;
   onEditVendor: (vendor: Vendor) => void;
-onVendorDeleted?: (id: string) => void;
+  onVendorDeleted?: (id: string) => void;
 }
 
 const VendorList: React.FC<VendorListProps> = ({ onVendorClick, onEditVendor, onVendorDeleted }) => {
@@ -43,35 +45,64 @@ const VendorList: React.FC<VendorListProps> = ({ onVendorClick, onEditVendor, on
         createdAt: new Date(v.created_at),
       }));
       setVendors(mappedVendors);
+      toast.success(' Vendors loaded successfully!', {
+        position: "top-right",
+        autoClose: 2000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     } catch (error) {
       console.error("Failed to fetch vendors", error);
-      alert("Failed to fetch vendors. Please check your connection.");
+      toast.error('Failed to fetch vendors. Please check your connection.', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     }
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
-  e.stopPropagation();
+    e.stopPropagation();
 
-  try {
-    await axios.delete(`http://192.168.11.103:5000/vendors/${id}`);
+    try {
+      await axios.delete(`http://192.168.11.103:5000/vendors/${id}`);
 
-    // ✅ Instant UI update (no reload)
-    setVendors(prev => prev.filter(v => v.id !== id));
+      // Instant UI update (no reload)
+      setVendors(prev => prev.filter(v => v.id !== id));
 
-    alert('✅ Vendor deleted successfully!');
+      toast.success(' Vendor deleted successfully!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
 
-    onVendorDeleted?.(id); // optional
-    setDeleteConfirm(null);
+      onVendorDeleted?.(id);
+      setDeleteConfirm(null);
 
-  } catch (error: any) {
-    console.error("Failed to delete vendor", error);
+    } catch (error: any) {
+      console.error("Failed to delete vendor", error);
 
-    alert(
-      error.response?.data?.message ||
-      "Failed to delete vendor"
-    );
-  }
-};
+      toast.error(
+        error.response?.data?.message || " Failed to delete vendor",
+        {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        }
+      );
+    }
+  };
 
   const handleEdit = (vendor: Vendor, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -127,38 +158,27 @@ const VendorList: React.FC<VendorListProps> = ({ onVendorClick, onEditVendor, on
     return sortDirection === 'asc' ? '↑' : '↓';
   };
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
 
-  const exportToCSV = () => {
-    const headers = ['Vendor Name', 'Phone', 'Email', 'GST Number', 'PAN', 'Address', 'Created Date'];
-    const csvData = filteredVendors.map(vendor => [
-      vendor.vendorName,
-      vendor.phone,
-      vendor.email || 'N/A',
-      vendor.gstNumber || 'N/A',
-      vendor.pan || 'N/A',
-      vendor.address || 'N/A',
-      formatDate(vendor.createdAt)
-    ]);
-    
-    const csvContent = [headers, ...csvData].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `vendors_export_${new Date().toLocaleDateString()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  
+
+
+  
 
   return (
     <div className="max-w-[1400px] mx-auto">
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
+
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -216,13 +236,8 @@ const VendorList: React.FC<VendorListProps> = ({ onVendorClick, onEditVendor, on
                 />
               </div>
               
-              <button
-                onClick={exportToCSV}
-                className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white px-4 py-2.5 rounded-lg transition-all flex items-center gap-2 whitespace-nowrap"
-              >
-                <Download className="w-4 h-4" />
-                Export CSV
-              </button>
+              
+              
             </div>
           </div>
         </div>
@@ -272,7 +287,7 @@ const VendorList: React.FC<VendorListProps> = ({ onVendorClick, onEditVendor, on
                     <div className="flex items-center gap-3">
                       <div>
                         <p className="font-semibold text-gray-900">{vendor.vendorName}</p>
-                        <p className="text-xs text-gray-500">ID: {vendor.id.slice(-8)}</p>
+                        
                       </div>
                     </div>
                   </td>

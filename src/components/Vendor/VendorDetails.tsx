@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Edit, Building, Phone, Mail, MapPin, FileText, Upload, X } from 'lucide-react';
+import { Download, Building, Phone, Mail, MapPin, FileText, Eye, Image as ImageIcon } from 'lucide-react';
 import type { Vendor, BillItem } from '../../types';
 import { FIXED_ITEMS } from '../../types';
 import { BillValidator } from '../../utils/validation';
 import { generateBillPDF } from '../../utils/pdfGenerator';
 import axios from 'axios';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 interface VendorDetailsProps {
   vendorId: string;
@@ -81,6 +83,8 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [logoBase64, setLogoBase64] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [vendorLogo, setVendorLogo] = useState<string>('');
+  const [certificateFile, setCertificateFile] = useState<{ name: string; url: string } | null>(null);
 
   // Bill data from API response
   const [billData, setBillData] = useState<{
@@ -115,10 +119,26 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
             ifscCode: response.data.ifsc_code,
           },
           createdAt: new Date(response.data.created_at),
-          updatedAt: new Date(response.data.updated_at), 
+          updatedAt: new Date(response.data.updated_at),
+          logo_path: response.data.logo_path,
         };
         
         setVendor(vendorData);
+        
+        // Set vendor logo
+        if (response.data.logo_path) {
+          const logoUrl = `http://192.168.11.103:5000/${response.data.logo_path}`;
+          setVendorLogo(logoUrl);
+        }
+        
+        // Set certificate file info
+        if (response.data.msme_certificate_path) {
+          const certUrl = `http://192.168.11.103:5000/${response.data.msme_certificate_path}`;
+          setCertificateFile({
+            name: response.data.msme_certificate_path.split('/').pop() || 'MSME_Certificate.pdf',
+            url: certUrl
+          });
+        }
         
         // Initialize items
         const initialItems = FIXED_ITEMS.map((item, index) => ({
@@ -128,9 +148,19 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
         }));
         setItems(initialItems);
         
+        toast.success('✅ Vendor details loaded successfully!', {
+          position: "top-right",
+          autoClose: 3000,
+        });
+        
       } catch (err: any) {
         console.error("Failed to fetch vendor details", err);
-        setError(err.response?.data?.message || "Failed to load vendor details. Please try again.");
+        const errorMsg = err.response?.data?.message || "Failed to load vendor details. Please try again.";
+        setError(errorMsg);
+        toast.error(`❌ ${errorMsg}`, {
+          position: "top-right",
+          autoClose: 4000,
+        });
       } finally {
         setLoading(false);
       }
@@ -139,7 +169,7 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
     if (vendorId) {
       fetchVendor();
     }
-    
+        
     // Load saved logo from localStorage
     const savedLogo = localStorage.getItem('companyLogo');
     if (savedLogo) {
@@ -178,32 +208,14 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
     }
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.match(/image\/(png|jpeg|jpg|svg)/)) {
-        alert('Please upload PNG, JPG, or SVG file only');
-        return;
-      }
-      
-      if (file.size > 2 * 1024 * 1024) {
-        alert('Logo size should be less than 2MB');
-        return;
-      }
-      
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const logoData = reader.result as string;
-        setLogoBase64(logoData);
-        localStorage.setItem('companyLogo', logoData);
-      };
-      reader.readAsDataURL(file);
+  const handleDownloadCertificate = () => {
+    if (certificateFile) {
+      window.open(certificateFile.url, '_blank');
+      toast.info('📄 Downloading MSME Certificate...', {
+        position: "top-right",
+        autoClose: 2000,
+      });
     }
-  };
-
-  const handleRemoveLogo = () => {
-    setLogoBase64('');
-    localStorage.removeItem('companyLogo');
   };
 
   const handleGenerateBill = async () => {
@@ -211,7 +223,10 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
     
     const hasValidItems = items.some(item => item.quantity > 0 && item.rate > 0);
     if (!hasValidItems) {
-      alert('Please add at least one item with quantity and rate');
+      toast.warning('⚠️ Please add at least one item with quantity and rate', {
+        position: "top-right",
+        autoClose: 3000,
+      });
       return;
     }
     
@@ -250,37 +265,56 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
         // Store bill data from API response
         const apiResponse = response.data;
         
-        setBillData({
-          message: apiResponse.message,
-          bill_id: apiResponse.bill_id,
+        const billCalculations = {
           subtotal: apiResponse.subtotal || 0,
           gst_total: apiResponse.gst_total || 0,
           grand_total: apiResponse.grand_total || 0
+        };
+        
+        setBillData({
+          message: apiResponse.message,
+          bill_id: apiResponse.bill_id,
+          subtotal: billCalculations.subtotal,
+          gst_total: billCalculations.gst_total,
+          grand_total: billCalculations.grand_total
         });
         
         // Update total amounts
-        setTotalAmount(apiResponse.subtotal || 0);
+        setTotalAmount(billCalculations.subtotal);
         
-        // Generate PDF with backend-calculated values
-        // Since backend only returns total GST, we pass 0 for individual GST types
-        await generateBillPDF(vendor, items, apiResponse.subtotal || 0, logoBase64, {
-          cgst: 0,
-          sgst: 0,
-          igst: 0,
-          grandTotal: apiResponse.grand_total || 0,
-          companyGST: COMPANY_GST,
-          companyState: COMPANY_STATE
+        // Generate PDF with backend-calculated values and vendor logo
+        await generateBillPDF(
+          vendor, 
+          items, 
+          billCalculations.subtotal, 
+          logoBase64, 
+          {
+            grandTotal: billCalculations.grand_total,
+            companyGST: COMPANY_GST,
+            companyState: COMPANY_STATE,
+            gstTotal: billCalculations.gst_total,
+            vendorLogo: vendorLogo 
+          }
+        );
+        
+        toast.success(`✅ ${apiResponse.message || 'Bill created successfully!'} Bill ID: ${apiResponse.bill_id}`, {
+          position: "top-right",
+          autoClose: 4000,
         });
-        
-        alert(`✅ ${apiResponse.message || 'Bill created successfully!'} Bill ID: ${apiResponse.bill_id}`);
       } else {
-        alert('⚠️ Bill created but unexpected response format.');
+        toast.warning('⚠️ Bill created but unexpected response format.', {
+          position: "top-right",
+          autoClose: 3000,
+        });
       }
       
     } catch (error: any) {
       console.error("Failed to create bill", error);
       const errorMessage = error.response?.data?.message || error.message || "Failed to create bill. Please try again.";
-      alert(`❌ ${errorMessage}`);
+      toast.error(`❌ ${errorMessage}`, {
+        position: "top-right",
+        autoClose: 5000,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -342,52 +376,40 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Logo Upload Card */}
-      <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="w-20 h-20 bg-gray-50 rounded-xl shadow-md flex items-center justify-center overflow-hidden border border-gray-200">
-              {logoBase64 ? (
-                <img src={logoBase64} alt="Company Logo" className="max-w-full max-h-full object-contain p-2" />
-              ) : (
-                <Building className="w-10 h-10 text-gray-400" />
-              )}
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800">Company Logo</h3>
-              <p className="text-sm text-gray-500">Upload your company logo to appear on invoices</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <label className="cursor-pointer">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/jpg,image/svg+xml"
-                onChange={handleLogoUpload}
-                className="hidden"
-              />
-              <div className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2 cursor-pointer">
-                <Upload className="w-4 h-4" />
-                <span>{logoBase64 ? 'Change Logo' : 'Upload Logo'}</span>
-              </div>
-            </label>
-            {logoBase64 && (
-              <button onClick={handleRemoveLogo} className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors flex items-center space-x-2">
-                <X className="w-4 h-4" />
-                <span>Remove</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
 
       {/* Vendor Details Card */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-          <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-            <Building className="w-6 h-6 mr-2 text-primary-600" />
-            Vendor Details
-          </h2>
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
+              <Building className="w-6 h-6 mr-2 text-primary-600" />
+              Vendor Details
+            </h2>
+            {vendorLogo && (
+              <div className="flex items-center gap-2">
+                <img 
+                  src={vendorLogo} 
+                  alt="Vendor Logo" 
+                  className="h-12 w-12 object-contain rounded-lg border border-gray-200"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="p-6">
@@ -460,10 +482,21 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
                     <p className="font-semibold text-gray-800">{vendor.aadhaarNumber}</p>
                   </div>
                 )}
-                {vendor.msmeCertificateNo && (
+                {certificateFile && (
                   <div>
                     <p className="text-sm text-gray-500">MSME Certificate</p>
-                    <p className="font-semibold text-gray-800">{vendor.msmeCertificateNo}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="font-semibold text-gray-800 text-sm truncate flex-1">
+                        {certificateFile.name}
+                      </p>
+                      <button
+                        onClick={handleDownloadCertificate}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-primary-50 text-primary-600 rounded hover:bg-primary-100 transition-colors text-xs"
+                      >
+                        <Eye className="w-3 h-3" />
+                        View
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -566,7 +599,15 @@ const VendorDetails: React.FC<VendorDetailsProps> = ({ vendorId }) => {
                 {isGSTApplicable && hasBillData && displaySubtotal > 0 && (
                   <>
                     <div className="flex justify-between py-2">
-                      <span className="font-semibold text-gray-700">GST Amount:</span>
+                      <span className="font-semibold text-gray-700">CGST (9%):</span>
+                      <span className="text-gray-800">₹{(displayGSTTotal / 2).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="font-semibold text-gray-700">SGST (9%):</span>
+                      <span className="text-gray-800">₹{(displayGSTTotal / 2).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="font-semibold text-gray-700">Total GST:</span>
                       <span className="text-gray-800">₹{displayGSTTotal.toFixed(2)}</span>
                     </div>
                   </>
