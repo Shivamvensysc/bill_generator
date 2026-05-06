@@ -24,7 +24,7 @@ const VendorList: React.FC<VendorListProps> = ({ onVendorClick, onEditVendor, on
 
   const loadVendors = async () => {
     try {
-      const res = await axios.get("http://192.168.11.99:5000/vendors");
+      const res = await axios.get("http://192.168.11.103:5000/vendors");
       const mappedVendors: Vendor[] = res.data.map((v: any) => ({
         id: String(v.id),
         vendorName: v.name,
@@ -53,7 +53,7 @@ const VendorList: React.FC<VendorListProps> = ({ onVendorClick, onEditVendor, on
   e.stopPropagation();
 
   try {
-    await axios.delete(`http://192.168.11.99:5000/vendors/${id}`);
+    await axios.delete(`http://192.168.11.103:5000/vendors/${id}`);
 
     // ✅ Instant UI update (no reload)
     setVendors(prev => prev.filter(v => v.id !== id));
